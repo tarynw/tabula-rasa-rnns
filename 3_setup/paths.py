@@ -5,7 +5,7 @@ CHAR_VOCAB_HOME = "vocabularies/" # this is part of the repo, so there should be
 MODELS_HOME = "/u/scr/mhahn/FAIR18/CHECKPOINTS/"  # for storing neural network parameters
 LOG_HOME = "/u/scr/mhahn/FAIR18/CHECKPOINTS/" # for logging validation losses
 FIGURES_HOME = "/u/scr/mhahn/FAIR18/CHECKPOINTS/" # for storing visualizations
-WIKIPEDIA_HOME = "/home-4/twong42@jhu.edu/scratch/RNN_AgreementAttraction/colorlessgreenRNNs/data/lm/" # locaion on Wikipedia corpus
+WIKIPEDIA_HOME = "/u/scr/mhahn/FAIR18/" # locaion on Wikipedia corpus
 
 MSR_COMP_HOME = "/u/scr/mhahn/FAIR18/"
 

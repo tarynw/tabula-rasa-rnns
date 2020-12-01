@@ -3,9 +3,10 @@ import random
  
 
 def load(language, partition, doShuffling=True):
-  if language == "italian":
+  # modifying code to track train sets from GUlordava study
+  if language in ["Italian", "German", "English"]:
     chunks = []
-    with open(WIKIPEDIA_HOME+"/itwiki-"+partition+".txt", "r") as inFile:
+    with open(WIKIPEDIA_HOME+"/"+language+"/train.txt", "r") as inFile:
       for line in inFile:
         chunks.append(line.strip().lower())
         if len(chunks) > 20000:
@@ -14,18 +15,7 @@ def load(language, partition, doShuffling=True):
            yield "".join(chunks)
            chunks = []
     yield "".join(chunks)
-  else:
-    chunks = []
-    pathInfix = {"german" : "", "english" : "//"}[language]
-    with open(WIKIPEDIA_HOME+""+pathInfix+language+"-"+partition+".txt", "r") as inFile:
-      for line in inFile:
-        chunks.append(line.strip().lower())
-        if len(chunks) > 20000:
-           if doShuffling:
-              random.shuffle(chunks)
-           yield "".join(chunks)
-           chunks = []
-    yield "".join(chunks)
+  
 
 def training(language):
   return load(language, "train")
