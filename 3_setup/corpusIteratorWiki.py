@@ -4,10 +4,11 @@ import random
 
 def load(language, partition, doShuffling=True):
   # modifying code to track train sets from GUlordava study
-  if language in ["Italian", "German", "English"]:
+  if language in ["Italian", "German", "English","Russian"]:
     chunks = []
-    with open(WIKIPEDIA_HOME+"/"+language+"/train.txt", "r") as inFile:
+    with open(WIKIPEDIA_HOME+"/"+language+"/train.txt", "rb") as inFile:
       for line in inFile:
+        line = line.decode('utf8')
         chunks.append(line.strip().lower())
         if len(chunks) > 20000:
            if doShuffling:

@@ -1,6 +1,5 @@
 from paths import WIKIPEDIA_HOME
 from paths import LOG_HOME
-from paths import CHAR_VOCAB_HOME
 from paths import MODELS_HOME
 import sys
 
@@ -33,9 +32,8 @@ args=parser.parse_args()
 
 if "MYID" in args.save_to:
    args.save_to = args.save_to.replace("MYID", str(args.myID))
-
-print(args)
-
+with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "w") as outFile:
+   outFile.write('running script!\n')
 
 
 import corpusIteratorWiki
@@ -49,22 +47,27 @@ def plus(it1, it2):
       yield x
 
 try:
-   with open(CHAR_VOCAB_HOME+"/char-vocab-wiki-"+args.language, "r") as inFile:
-     itos = inFile.read().strip().split("\n")
+   with open(WIKIPEDIA_HOME+"/"+args.language+"/vocab.txt", "rb") as inFile:
+     itos = inFile.read().strip().decode('utf8').split("\n") # need to be able to read cyrillic chars
+   # modified to output to log file
+   with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
+      outFile.write("Loading vocab from: " + WIKIPEDIA_HOME+"/"+args.language+"/vocab.txt\n")
 except FileNotFoundError:
     assert False
-    print("Creating new vocab")
+    # modified to output to log file
+    with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
+      outFile.write("Creating new vocab\n")
     char_counts = {}
     # get symbol vocabulary
 
-    with open(WIKIPEDIA_HOME+"/"+args.language+"-vocab.txt", "r") as inFile:
-      words = inFile.read().strip().split("\n")
+    with open(WIKIPEDIA_HOME+"/"+args.language+"/train.txt", "rb") as inFile:
+      words = inFile.read().strip().decode('utf8').split("\n")
       for word in words:
          for char in word.lower():
             char_counts[char] = char_counts.get(char, 0) + 1
     char_counts = [(x,y) for x, y in char_counts.items()]
     itos = [x for x,y in sorted(char_counts, key=lambda z:(z[0],-z[1])) if y > 50]
-    with open(CHAR_VOCAB_HOME+"/char-vocab-wiki-"+args.language, "w") as outFile:
+    with open(WIKIPEDIA_HOME+"/"+args.language+"/vocab.txt", "w") as outFile:
        print("\n".join(itos), file=outFile)
 #itos = sorted(itos)
 itos.append(" ")
@@ -161,6 +164,9 @@ def prepareDatasetChunks(data, train=True):
 #           print(numerifiedCurrent[i].size())
            yield numerifiedCurrent[i]
        hidden = None
+      # modified to output to log file
+      with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
+       outFile.write("number of characters in data: " + str(count) + "\n")
 
 def prepareDatasetChunksPrevious(data, train=True):
       numeric = [0]
@@ -302,9 +308,11 @@ for epoch in range(10000):
           print(learning_rate)
           print(args)
       if counter % 20000 == 0 and epoch <= 1:
-        if args.save_to is not None:
-           torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+".pth.tar")
-
+          # modified to output to log file
+          with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
+             outFile.write("training loss at epoch " + str(epoch) + ": " + " ".join([str(x) for x in devLosses]) + "\n")
+          if args.save_to is not None:
+           torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+"epoch" + str(epoch) + ".pth.tar")
 
    rnn_drop.train(False)
 
@@ -331,14 +339,15 @@ for epoch in range(10000):
        dev_char_count += numberOfCharacters
    devLosses.append(dev_loss/dev_char_count)
    print(devLosses)
-   with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "w") as outFile:
-      print(" ".join([str(x) for x in devLosses]), file=outFile)
+   with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
+      outFile.write(" ".join([str(x) for x in devLosses]))
+      outFile.write("perplexity: " + " ".join([str(math.exp(x)) for x in devLosses]))
       print(" ".join(sys.argv), file=outFile)
       print(str(args), file=outFile)
    if len(devLosses) > 1 and devLosses[-1] > devLosses[-2]:
       break
    if args.save_to is not None:
-      torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+".pth.tar")
+      torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+"epoch" + str(epoch) + ".pth.tar")
 
    learning_rate = args.learning_rate * math.pow(args.lr_decay, len(devLosses))
    optim = torch.optim.SGD(parameters(), lr=learning_rate, momentum=0.0) # 0.02, 0.9
