@@ -24,8 +24,7 @@ parser.add_argument("--myID", type=int, default=random.randint(0,1000000000))
 parser.add_argument("--sequence_length", type=int, default=random.choice([50, 50, 50, 80]))
 parser.add_argument("--verbose", type=bool, default=False)
 parser.add_argument("--lr_decay", type=float, default=random.choice([0.5, 0.7, 0.9, 0.95, 0.98, 0.98, 0.98, 0.98, 1.0]))
-
-
+parser.add_argument("--epoch_save_freq", type=float, default=0.25) # used to save model every 1/4 epoch
 import math
 
 args=parser.parse_args()
@@ -35,10 +34,7 @@ if "MYID" in args.save_to:
 with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "w") as outFile:
    outFile.write('running script!\n')
 
-
 import corpusIteratorWiki
-
-
 
 def plus(it1, it2):
    for x in it1:
@@ -58,8 +54,8 @@ except FileNotFoundError:
     with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
       outFile.write("Creating new vocab\n")
     char_counts = {}
-    # get symbol vocabulary
 
+    # get symbol vocabulary
     with open(WIKIPEDIA_HOME+"/"+args.language+"/train.txt", "rb") as inFile:
       words = inFile.read().strip().decode('utf8').split("\n")
       for word in words:
@@ -75,25 +71,18 @@ assert " " in itos
 print(itos)
 stoi = dict([(itos[i],i) for i in range(len(itos))])
 
-
-
-
 import random
-
-
 import torch
 
 print(torch.__version__)
 
 from weight_drop import WeightDrop
 
-
 rnn = torch.nn.LSTM(args.char_embedding_size, args.hidden_dim, args.layer_num).cuda()
 
 rnn_parameter_names = [name for name, _ in rnn.named_parameters()]
 print(rnn_parameter_names)
 #quit()
-
 
 rnn_drop = WeightDrop(rnn, [(name, args.weight_dropout_in) for name, _ in rnn.named_parameters() if name.startswith("weight_ih_")] + [ (name, args.weight_dropout_hidden) for name, _ in rnn.named_parameters() if name.startswith("weight_hh_")])
 
@@ -107,34 +96,41 @@ train_loss = torch.nn.NLLLoss(ignore_index=0)
 print_loss = torch.nn.NLLLoss(size_average=False, reduce=False, ignore_index=0)
 char_dropout = torch.nn.Dropout2d(p=args.char_dropout_prob)
 
-modules = [rnn, output, char_embeddings]
+# initializing new global var to assist with saving model more frequently
+save_model_modulo = 0
+
+# updated modules to store all necessary params to reload & pick up where training previously left off (added batchSize, sequence_length which are used in chunking of dataset)
+# not saving dropout related or lr decay parameters since it is alright if those are randomized (lr saved off in optim)
+modules = [rnn, output, char_embeddings, args.batchSize, args.sequence_length]
 def parameters():
    for module in modules:
        for param in module.parameters():
             yield param
 
-
 learning_rate = args.learning_rate
 
 optim = torch.optim.SGD(parameters(), lr=learning_rate, momentum=0.0) # 0.02, 0.9
 
-named_modules = {"rnn" : rnn, "output" : output, "char_embeddings" : char_embeddings, "optim" : optim}
+named_modules = {"rnn" : rnn, "output" : output, "char_embeddings" : char_embeddings, "optim" : optim, "batch_size" : args.batchSize, "sequence_length" : args.sequence_length}
 
 if args.load_from is not None:
   checkpoint = torch.load(MODELS_HOME+"/"+args.load_from+".pth.tar")
   for name, module in named_modules.items():
       module.load_state_dict(checkpoint[name])
+      
+      # saving specific args I added 
+      if name == "batch_size":
+        args.batchSize = module
+      elif name == "sequence_length":
+        args.sequence_length = module
 
 parameters_cached = [x for x in parameters()]
 
-
 from torch.autograd import Variable
-
 
 # ([0] + [stoi[training_data[x]]+1 for x in range(b, b+sequence_length) if x < len(training_data)]) 
 
 #from embed_regularize import embedded_dropout
-
 
 def prepareDatasetChunks(data, train=True):
       numeric = [0]
@@ -153,16 +149,19 @@ def prepareDatasetChunks(data, train=True):
        #  if len(numeric) > args.sequence_length:
         #    yield numeric
          #   numeric = [0]
-       cutoff = int(len(numerified)/(args.batchSize*args.sequence_length)) * (args.batchSize*args.sequence_length)
+       cutoff = int(len(numerified)/(args.batchSize*args.sequence_length)) * (args.batchSize*args.sequence_length) # I guess this is a way to get a nice cutoff value (int conversion truncates)
        numerifiedCurrent = numerified[:cutoff]
        numerified = numerified[cutoff:]
        numerifiedCurrent = torch.LongTensor(numerifiedCurrent).view(args.batchSize, -1, args.sequence_length).transpose(0,1).transpose(1,2).cuda()
        #print(numerifiedCurrent.size())
        #quit()
+
        numberOfSequences = numerifiedCurrent.size()[0]
+       # saving num sequences / how frequently to save (ex. default is saving every 1/4 epoch)
+       save_model_modulo = (int) numberOfSequences * args.epoch_save_freq
        for i in range(numberOfSequences):
 #           print(numerifiedCurrent[i].size())
-           yield numerifiedCurrent[i]
+           yield numerifiedCurrent[i] # generator version of return
        hidden = None
       # modified to output to log file
       with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
@@ -184,11 +183,6 @@ def prepareDatasetChunksPrevious(data, train=True):
          if len(numeric) > args.sequence_length:
             yield numeric
             numeric = [0]
-
-
-
-
-
 
 def prepareDataset(data, train=True):
       numeric = [0]
@@ -222,11 +216,9 @@ def forward(numeric, train=True, printHere=False):
 
       beginning = numeric[numeric.size()[0]-1].view(1, args.batchSize)
 
-
       input_tensor = Variable(numeric[:-1], requires_grad=False)
       target_tensor = Variable(numeric[1:], requires_grad=False)
       
-
     #  print(char_embeddings)
       #if train and (embedding_full_dropout_prob is not None):
       #   embedded = embedded_dropout(char_embeddings, input_tensor, dropout=embedding_full_dropout_prob, scale=None) #char_embeddings(input_tensor)
@@ -245,7 +237,6 @@ def forward(numeric, train=True, printHere=False):
   #    print(log_probs)
  #     print(target_tensor)
 
-      
       loss = train_loss(log_probs.view(-1, len(itos)+3), target_tensor.view(-1))
 
       if printHere and args.verbose:
@@ -271,9 +262,6 @@ def backward(loss, printHere):
       torch.nn.utils.clip_grad_value_(parameters_cached, 5.0) #, norm_type="inf")
       optim.step()
 
-
-
-
 import time
 
 devLosses = []
@@ -283,8 +271,6 @@ for epoch in range(10000):
    print("Got data")
    training_chars = prepareDatasetChunks(training_data, train=True)
 
-
-
    rnn_drop.train(True)
    startTime = time.time()
    trainChars = 0
@@ -293,7 +279,7 @@ for epoch in range(10000):
    while True:
       counter += 1
       try:
-         numeric = next(training_chars)
+         (num_sequences, numeric) = next(training_chars)
       except StopIteration:
          break
       printHere = (counter % 50 == 0)
@@ -307,21 +293,21 @@ for epoch in range(10000):
           print("Chars per sec "+str(trainChars/(time.time()-startTime)))
           print(learning_rate)
           print(args)
-      if counter % 20000 == 0 and epoch <= 1:
+      # also save model if at 1/4 epoch
+      if (counter % 20000 == 0 and epoch <= 1) or (num_sequences % save_model_modulo == 0):
           # modified to output to log file
           with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
-             outFile.write("training loss at epoch " + str(epoch) + ": " + " ".join([str(x) for x in devLosses]) + "\n")
-          if args.save_to is not None:
-           torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+"epoch" + str(epoch) + ".pth.tar")
+            outFile.write("training loss at epoch " + str(epoch) + ": " + " ".join([str(x) for x in devLosses]) + "\n")
+            outFile.write("perplexity: " + " ".join([str(2^(x)) for x in devLosses]) + "\n")
+            if args.save_to is not None:
+              outFile.write("saving model in: " + MODELS_HOME + "\n")
+              torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+".pth.tar")
 
    rnn_drop.train(False)
-
 
    dev_data = corpusIteratorWiki.dev(args.language)
    print("Got data")
    dev_chars = prepareDatasetChunks(dev_data, train=False)
-
-
      
    dev_loss = 0
    dev_char_count = 0
@@ -330,7 +316,7 @@ for epoch in range(10000):
    while True:
        counter += 1
        try:
-          numeric = next(dev_chars)
+          (num_sequences, numeric) = next(dev_chars)
        except StopIteration:
           break
        printHere = (counter % 50 == 0)
@@ -340,14 +326,14 @@ for epoch in range(10000):
    devLosses.append(dev_loss/dev_char_count)
    print(devLosses)
    with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
-      outFile.write(" ".join([str(x) for x in devLosses]))
-      outFile.write("perplexity: " + " ".join([str(math.exp(x)) for x in devLosses]))
+      outFile.write("dev loss:" + " ".join([str(x) for x in devLosses]))
+      outFile.write("perplexity: " + " ".join([str(2^(x)) for x in devLosses]))
       print(" ".join(sys.argv), file=outFile)
       print(str(args), file=outFile)
    if len(devLosses) > 1 and devLosses[-1] > devLosses[-2]:
       break
    if args.save_to is not None:
-      torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to+"epoch" + str(epoch) + ".pth.tar")
+      torch.save(dict([(name, module.state_dict()) for name, module in named_modules.items()]), MODELS_HOME+"/"+args.save_to + ".pth.tar")
 
    learning_rate = args.learning_rate * math.pow(args.lr_decay, len(devLosses))
    optim = torch.optim.SGD(parameters(), lr=learning_rate, momentum=0.0) # 0.02, 0.9
