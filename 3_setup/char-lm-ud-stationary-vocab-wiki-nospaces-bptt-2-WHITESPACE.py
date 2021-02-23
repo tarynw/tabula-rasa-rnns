@@ -99,9 +99,7 @@ char_dropout = torch.nn.Dropout2d(p=args.char_dropout_prob)
 # initializing new global var to assist with saving model more frequently
 save_model_modulo = 0
 
-# updated modules to store all necessary params to reload & pick up where training previously left off (added batchSize, sequence_length which are used in chunking of dataset)
-# not saving dropout related or lr decay parameters since it is alright if those are randomized (lr saved off in optim)
-modules = [rnn, output, char_embeddings, args.batchSize, args.sequence_length]
+modules = [rnn, output, char_embeddings]
 def parameters():
    for module in modules:
        for param in module.parameters():
@@ -111,18 +109,12 @@ learning_rate = args.learning_rate
 
 optim = torch.optim.SGD(parameters(), lr=learning_rate, momentum=0.0) # 0.02, 0.9
 
-named_modules = {"rnn" : rnn, "output" : output, "char_embeddings" : char_embeddings, "optim" : optim, "batch_size" : args.batchSize, "sequence_length" : args.sequence_length}
+named_modules = {"rnn" : rnn, "output" : output, "char_embeddings" : char_embeddings, "optim" : optim}
 
 if args.load_from is not None:
   checkpoint = torch.load(MODELS_HOME+"/"+args.load_from+".pth.tar")
   for name, module in named_modules.items():
       module.load_state_dict(checkpoint[name])
-      
-      # saving specific args I added 
-      if name == "batch_size":
-        args.batchSize = module
-      elif name == "sequence_length":
-        args.sequence_length = module
 
 parameters_cached = [x for x in parameters()]
 
