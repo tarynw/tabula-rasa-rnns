@@ -6,7 +6,7 @@ def load(language, partition, doShuffling=False):
   # modifying code to track train sets from Gulordava study
   if language in ["Italian", "German", "English","Russian"]:
     chunks = []
-    with open(WIKIPEDIA_HOME+"/"+language+"/"+partition".txt", "rb") as inFile:
+    with open(WIKIPEDIA_HOME+"/"+language+"/"+partition+".txt", "rb") as inFile:
       for line in inFile:
         line = line.decode('utf8')
         chunks.append(line.strip().lower())
