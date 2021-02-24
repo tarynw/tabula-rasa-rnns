@@ -271,7 +271,7 @@ for epoch in range(10000):
    while True:
       counter += 1
       try:
-         (num_sequences, numeric) = next(training_chars)
+         numeric = next(training_chars)
       except StopIteration:
          break
       printHere = (counter % 50 == 0)
@@ -308,7 +308,7 @@ for epoch in range(10000):
    while True:
        counter += 1
        try:
-          (num_sequences, numeric) = next(dev_chars)
+          numeric = next(dev_chars)
        except StopIteration:
           break
        printHere = (counter % 50 == 0)
