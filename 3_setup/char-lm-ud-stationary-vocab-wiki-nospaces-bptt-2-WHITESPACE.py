@@ -286,7 +286,7 @@ for epoch in range(10000):
           print(learning_rate)
           print(args)
       # also save model if at 1/4 epoch
-      if (counter % 20000 == 0 and epoch <= 1) or (num_sequences % save_model_modulo == 0):
+      if (counter % 20000 == 0 and epoch <= 1) or (counter % save_model_modulo == 0):
           # modified to output to log file
           with open(LOG_HOME+"/"+args.language+"_"+__file__+"_"+str(args.myID), "a") as outFile:
             outFile.write("training loss at epoch " + str(epoch) + ": " + " ".join([str(x) for x in devLosses]) + "\n")
