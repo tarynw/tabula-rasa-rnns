@@ -150,7 +150,7 @@ def prepareDatasetChunks(data, train=True):
 
        numberOfSequences = numerifiedCurrent.size()[0]
        # saving num sequences / how frequently to save (ex. default is saving every 1/4 epoch)
-       save_model_modulo = (int) numberOfSequences * args.epoch_save_freq
+       save_model_modulo = int(numberOfSequences * args.epoch_save_freq)
        for i in range(numberOfSequences):
 #           print(numerifiedCurrent[i].size())
            yield numerifiedCurrent[i] # generator version of return
